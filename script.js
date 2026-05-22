@@ -563,10 +563,15 @@ function setupImageUpload() {
     const newArea = imageUploadArea.cloneNode(true);
     imageUploadArea.parentNode.replaceChild(newArea, imageUploadArea);
     
-    newArea.addEventListener('click', () => {
-        if (productImageInput) productImageInput.click();
+    // 点击上传区域触发文件选择
+    newArea.addEventListener('click', (e) => {
+        // 防止点击内部元素时重复触发
+        if (e.target === newArea || e.target.closest('.image-upload-area')) {
+            if (productImageInput) productImageInput.click();
+        }
     });
     
+    // 拖拽上传
     newArea.addEventListener('dragover', (e) => { 
         e.preventDefault(); 
         newArea.classList.add('drag-over'); 
@@ -587,16 +592,29 @@ function setupImageUpload() {
         }
     });
     
+    // 修复：文件选择器事件绑定
     if (productImageInput) {
-        const newInput = productImageInput.cloneNode(true);
-        productImageInput.parentNode.replaceChild(newInput, productImageInput);
-        newInput.addEventListener('change', async (e) => {
-            if (e.target.files && e.target.files[0]) {
-                await handleImageFile(e.target.files[0]);
+        // 移除旧的事件监听器
+        const newFileInput = productImageInput.cloneNode(true);
+        productImageInput.parentNode.replaceChild(newFileInput, productImageInput);
+        
+        // 绑定 change 事件
+        newFileInput.addEventListener('change', async (e) => {
+            console.log('文件选择器触发:', e.target.files);
+            if (e.target.files && e.target.files.length > 0) {
+                const file = e.target.files[0];
+                if (file && file.type.startsWith('image/')) {
+                    await handleImageFile(file);
+                } else {
+                    showAlert('请选择图片文件', 'warning');
+                }
             }
+            // 清空 input 值，以便再次选择同一个文件时可以重新触发
+            newFileInput.value = '';
         });
     }
     
+    // 删除图片按钮
     if (removeImageBtn) {
         const newRemoveBtn = removeImageBtn.cloneNode(true);
         removeImageBtn.parentNode.replaceChild(newRemoveBtn, removeImageBtn);
@@ -606,6 +624,9 @@ function setupImageUpload() {
             const container = document.getElementById('imagePreviewContainer');
             if (container) container.innerHTML = '';
             newRemoveBtn.style.display = 'none';
+            // 同时清空文件选择器的值
+            const fileInput = document.getElementById('productImageInput');
+            if (fileInput) fileInput.value = '';
             showQuickToast('图片已删除', 'info');
         });
     }
@@ -2755,7 +2776,7 @@ function startAutoSaveTimer() {
     const skuInputElem = document.getElementById('skuInput');
     const productNameElem = document.getElementById('productName');
     
-    // 检查是否有必要字段
+    // 检查是否有必要字段 - 必须有生产日期才启动自动保存
     if (!productionDateElem?.value || !skuInputElem?.value || !productNameElem?.value) {
         return;
     }
@@ -2764,7 +2785,9 @@ function startAutoSaveTimer() {
     const timerDiv = document.getElementById('autoSaveTimer');
     const secondsSpan = document.getElementById('timerSeconds');
     if (timerDiv && secondsSpan) {
-        timerDiv.style.display = 'block';
+        timerDiv.style.display = 'flex';
+        timerDiv.style.alignItems = 'center';
+        timerDiv.style.justifyContent = 'center';
         let seconds = 3;
         secondsSpan.textContent = seconds;
         
@@ -2896,10 +2919,9 @@ async function lookupProductWithExistingDates() {
             }
             calculateDates();
             showQuickToast(`已找到商品：${product.name}`, 'success');
-            startAutoSaveTimer();
+            // 注意：这里不调用 startAutoSaveTimer()，让 calculateDates 中的日期选择后再触发
         } else {
             clearForm();
-            // 显示SKU未找到弹窗
             showSkuNotFoundDialog(sku);
         }
     } catch (error) {
@@ -3077,7 +3099,7 @@ function calculateDates() {
             }
         }
         
-        // 生产日期选择后，重置并启动自动保存计时器
+        // 生产日期选择后，重置并启动自动保存计时器（只有这里有生产日期变更）
         cancelAutoSaveTimer();
         startAutoSaveTimer();
         
