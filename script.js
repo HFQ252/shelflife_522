@@ -360,12 +360,19 @@ async function getProductImageUrl(sku) {
 
 // ========== 图片保存和删除函数 ==========
 async function saveProductImage(sku) {
-    if (!currentImageData) return false;
+    if (!currentImageData) {
+        console.log('没有图片数据');
+        return false;
+    }
+    
+    console.log('保存图片, SKU:', sku, '图片大小:', currentImageData.length);
+    
     try {
-        await apiRequest(`/api/images/${sku}`, 'POST', { 
+        const result = await apiRequest(`/api/images/${sku}`, 'POST', { 
             imageData: currentImageData, 
             imageMime: currentImageMime || 'image/jpeg' 
         });
+        console.log('图片保存响应:', result);
         return true;
     } catch (error) {
         console.error('保存图片失败:', error);
@@ -491,9 +498,15 @@ async function addNewProduct() {
         const result = await apiRequest('/api/products', 'POST', product);
         console.log('添加商品响应:', result);
         
-        // 保存图片（如果有）
+        // 保存图片（如果有）- 修复点：确保在商品添加成功后执行
         if (currentImageData) {
-            await saveProductImage(sku);
+            showQuickToast('正在上传图片...', 'info');
+            const saveResult = await saveProductImage(sku);
+            if (saveResult) {
+                showQuickToast('图片上传成功', 'success');
+            } else {
+                showAlert('图片上传失败，但商品已添加', 'warning');
+            }
         }
         
         showQuickToast('商品已成功添加到数据库', 'success');
@@ -521,12 +534,6 @@ async function addNewProduct() {
         // 刷新商品数据库表格
         dataCache.clear();
         await renderProductDatabaseTable(true);
-        
-        // 可选：切换到商品数据库标签页
-        // const databaseTab = document.getElementById('database-tab');
-        // if (databaseTab && window.bootstrap) {
-        //     new window.bootstrap.Tab(databaseTab).show();
-        // }
         
     } catch (error) {
         console.error('添加商品失败:', error);
@@ -605,6 +612,8 @@ function setupImageUpload() {
 }
 
 async function handleImageFile(file) {
+    console.log('处理图片文件:', file.name, file.size);
+    
     if (file.size > 10 * 1024 * 1024) { 
         showAlert('图片大小不能超过10MB', 'warning'); 
         return; 
@@ -615,10 +624,13 @@ async function handleImageFile(file) {
     }
     
     showQuickToast('正在压缩图片...', 'info');
+    
     try {
         const compressedDataUrl = await compressImage(file, 800, 800, 0.75);
         const compressedSize = Math.round((compressedDataUrl.length * 0.75) / 1024);
         const originalSizeKB = Math.round(file.size / 1024);
+        
+        console.log('压缩完成, 原始大小:', originalSizeKB, 'KB, 压缩后:', compressedSize, 'KB');
         
         currentImageData = compressedDataUrl;
         currentImageMime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
@@ -630,7 +642,9 @@ async function handleImageFile(file) {
             container.innerHTML = `<img src="${currentImageData}" class="image-preview" alt="预览" style="max-width:100%;max-height:150px;border-radius:8px;margin-top:10px;"><small class="d-block mt-1 text-muted">${escapeHtml(file.name)} (${originalSizeKB}KB → ${compressedSize}KB)</small>`;
         }
         if (removeBtn) removeBtn.style.display = 'inline-block';
-        showQuickToast('图片已压缩上传', 'success');
+        
+        showQuickToast('图片已压缩，点击"添加商品"时会上传', 'success');
+        
     } catch (error) {
         console.error('图片压缩失败:', error);
         showAlert('图片处理失败，请重试', 'danger');
@@ -703,9 +717,12 @@ async function updateProduct() {
             category 
         });
         
+        // 保存或删除图片 - 修复点
         if (currentImageData) {
+            showQuickToast('正在上传图片...', 'info');
             await saveProductImage(currentEditingSku);
         } else {
+            // 如果没有图片数据，删除已有图片
             await deleteProductImage(currentEditingSku);
         }
         
